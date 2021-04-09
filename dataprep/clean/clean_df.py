@@ -15,7 +15,7 @@ from pandas.api.types import infer_dtype
 # from clean_address import validate_address
 from dataprep.clean import validate_email, validate_country, validate_phone
 from dataprep.clean import validate_url, validate_lat_long, validate_ip
-from dataprep.clean import clean_headers
+from dataprep.clean import validate_address, clean_headers
 
 from .utils import NULL_VALUES
 
@@ -141,6 +141,7 @@ def clean_df(
                 "coordinate": "coordinate" in semantic_data_type_values_list,
                 "ip": "ip" in semantic_data_type_values_list,
                 "URL": "URL" in semantic_data_type_values_list,
+                "address": "address" in semantic_data_type_values_list,
             }
 
             _create_report(stats_datatype, len(df.columns), "datatype")
@@ -173,7 +174,7 @@ def _check_valid_values(data: str) -> bool:
     if valid, return True. Otherwise return False.
 
     """
-    not_valid = data in NULL_VALUES or data is pd.NA or data != data
+    not_valid = data in NULL_VALUES or pd.isna(data)
     return not not_valid
 
 
@@ -182,7 +183,7 @@ def _check_null_values(data: str) -> bool:
     Reversed version of function _check_valid_values() to check if data is invalid.
 
     """
-    not_valid = data in NULL_VALUES or data is pd.NA or data != data
+    not_valid = data in NULL_VALUES or pd.isna(data)
     return bool(not_valid)
 
 
@@ -227,15 +228,18 @@ def _infer_semantic_data_type(column: pd.Series) -> Any:
     # 3. For string and semantic data types (email, country, phone, etc.)
     default_infer_dtype = infer_dtype(column_not_na_subset)
 
-    semantic_data_type_dic = {"email": 0, "country": 0, "phone": 0, "ip": 0, "URL": 0}
+    semantic_data_type_dic = {"email": 0, "country": 0, "phone": 0, "ip": 0, "URL": 0, "address": 0}
 
     semantic_data_type_dic["email"] = sum(pd.Series(validate_email(column_not_na_subset)).tolist())
     semantic_data_type_dic["country"] = sum(
-            pd.Series(validate_country(column_not_na_subset)).tolist()
-        )
+        pd.Series(validate_country(column_not_na_subset)).tolist()
+    )
     semantic_data_type_dic["phone"] = sum(pd.Series(validate_phone(column_not_na_subset)).tolist())
     semantic_data_type_dic["ip"] = sum(pd.Series(validate_ip(column_not_na_subset)).tolist())
     semantic_data_type_dic["URL"] = sum(pd.Series(validate_url(column_not_na_subset)).tolist())
+    semantic_data_type_dic["address"] = sum(
+        pd.Series(validate_address(column_not_na_subset)).tolist()
+    )
 
     if all(value == 0 for value in semantic_data_type_dic.values()):
         # no semantic data types match, return the default one
@@ -366,7 +370,7 @@ def _create_report(stats: Dict[str, Any], old_stat: Any, option: str) -> None:
         if stats["cleaned"] > 0:
             nclnd = stats["cleaned"]
             pclnd = round(nclnd / old_stat * 100, 2)
-            print(f"\t Memory reducted from {old_stat} to {nclnd}. New size: ({pclnd}%)")
+            print(f"\tMemory reducted from {old_stat} to {nclnd}. New size: ({pclnd}%)")
         else:
             print("Downcast Memory not Performed.")
 
@@ -378,8 +382,8 @@ def _downcast_memory(df: pd.DataFrame) -> pd.DataFrame:
     """
     cols = df.dtypes.index.tolist()
     types = df.dtypes.values.tolist()
-    for i, t in enumerate(types):
-        if "Int" in str(t) or "int" in str(t):
+    for i, j in enumerate(types):
+        if "Int" in str(j) or "int" in str(j):
             if (
                 df[cols[i]].min() > np.iinfo(np.int8).min
                 and df[cols[i]].max() < np.iinfo(np.int8).max
@@ -398,7 +402,7 @@ def _downcast_memory(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 df[cols[i]] = df[cols[i]].astype("Int64")
         # Avoid forcing "float16" because it loses precision and is fragile
-        elif "Float" in str(t) or "float" in str(t):
+        elif "Float" in str(j) or "float" in str(j):
             if (
                 df[cols[i]].min() > np.finfo(np.float16).min
                 and df[cols[i]].max() < np.finfo(np.float32).max
@@ -406,7 +410,7 @@ def _downcast_memory(df: pd.DataFrame) -> pd.DataFrame:
                 df[cols[i]] = pd.to_numeric(df[cols[i]], downcast="float")
             else:
                 df[cols[i]] = df[cols[i]].astype("Float64")
-        elif "Object" in str(t) or "object" in str(t):
+        elif "Object" in str(j) or "object" in str(j):
             df[cols[i]] = df[cols[i]].astype("category")
 
     return df
