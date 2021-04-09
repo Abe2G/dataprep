@@ -341,8 +341,6 @@ def _create_report(stats: Dict[str, Any], old_stat: Any, option: str) -> None:
     """
     Describe what was done in the cleaning process.
     """
-    assert option in ["datatype", "header", "duplicate", "memory"]
-
     if option == "datatype":
         print("Data Type Detection Report:")
         print(
